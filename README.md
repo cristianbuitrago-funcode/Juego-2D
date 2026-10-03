@@ -170,6 +170,43 @@ Variables de entorno (ver `.env.example`):
 - `VITE_SERVER_URL`: en tiempo de build del cliente, URL del servidor cuando el cliente no se sirve desde él.
   También se puede probar con `?server=https://mi-servidor` en la URL.
 
+## GitHub Pages + servidor en Google Cloud Run (Firebase)
+
+GitHub Pages **solo sirve archivos estáticos**: puede alojar el cliente, pero no el servidor de juego
+(no ejecuta Node ni mantiene WebSockets). Lo mismo ocurre con Firebase Hosting y, en la práctica,
+con Cloud Functions (no mantienen un bucle de simulación continuo de 20 ticks/s).
+Usar Firestore/Realtime Database como "servidor" obligaría a que los clientes escriban el estado
+del juego y se perdería la autoridad del servidor (recursos, daño y victoria quedarían en manos del cliente).
+
+La opción recomendada con Google/Firebase es **Cloud Run** (mismo proyecto de Firebase, requiere el plan Blaze
+con facturación activada; tiene un nivel gratuito mensual). El repositorio ya incluye `Dockerfile` y
+`.github/workflows/pages.yml`.
+
+### 1. Servidor en Cloud Run
+1. Instala la CLI de Google Cloud (`gcloud`) e inicia sesión: `gcloud auth login`.
+2. Selecciona el proyecto de Firebase: `gcloud config set project TU-PROYECTO`.
+3. Desde la carpeta del repositorio:
+   ```bash
+   gcloud run deploy frontera \
+     --source . --region europe-west1 --allow-unauthenticated \
+     --max-instances 1 --session-affinity --timeout 3600 \
+     --set-env-vars CORS_ORIGINS=https://TU-USUARIO.github.io
+   ```
+   - `--max-instances 1`: las salas viven en memoria; todos los jugadores deben llegar a la misma instancia.
+   - `--timeout 3600`: las conexiones WebSocket pueden durar hasta 60 min (el cliente se reconecta solo si se cortan).
+4. Anota la URL que devuelve (p. ej. `https://frontera-xxxx.a.run.app`). Comprueba `https://…/health`.
+
+### 2. Cliente en GitHub Pages
+1. En GitHub: *Settings → Pages → Build and deployment → Source: **GitHub Actions***.
+2. *Settings → Secrets and variables → Actions → Variables → New repository variable*:
+   `SERVER_URL` = la URL de Cloud Run.
+3. Haz merge a `main` (o lanza el workflow «Publicar cliente en GitHub Pages» a mano desde *Actions*).
+4. El juego queda en `https://TU-USUARIO.github.io/NOMBRE-DEL-REPO/`.
+
+Alternativa gratuita sin tarjeta: el mismo servidor en **Render** (sección anterior); en ese caso pon la URL de Render en `SERVER_URL`
+y su `CORS_ORIGINS` con tu dominio de GitHub Pages. En el plan gratuito de Render el servidor se duerme tras 15 min sin uso
+y tarda unos segundos en despertar.
+
 ## Pasos para Android (no implementado todavía)
 
 La arquitectura ya está preparada (cliente web táctil, URL de servidor configurable). Para generar el APK con Capacitor:

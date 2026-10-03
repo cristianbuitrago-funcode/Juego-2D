@@ -1,0 +1,53 @@
+# Publica SOLO el cliente (archivos estáticos) en GitHub Pages.
+# El servidor de juego NO puede ejecutarse en GitHub Pages: debe desplegarse aparte
+# (Cloud Run de Google/Firebase, Render, Railway…) y su URL se indica en la variable SERVER_URL.
+name: Publicar cliente en GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Comprobar que SERVER_URL está configurada
+        run: |
+          if [ -z "${{ vars.SERVER_URL }}" ]; then
+            echo "::error::Falta la variable del repositorio SERVER_URL (Settings → Secrets and variables → Actions → Variables)."
+            exit 1
+          fi
+      - name: Compilar cliente
+        run: npm run build:client
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/
+          VITE_SERVER_URL: ${{ vars.SERVER_URL }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/client
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
