@@ -868,3 +868,56 @@ table.stats tr.me {
     padding: 3px 6px;
   }
 }
+/* Móvil en horizontal / pantallas bajas: más espacio para el mapa. */
+@media (max-height: 520px) {
+  :root {
+    --bottom-h: 104px;
+  }
+  .topbar {
+    height: 36px;
+  }
+  .left-col,
+  .side-panel {
+    top: 42px;
+  }
+  .objective,
+  .info .desc,
+  .info .stats {
+    display: none;
+  }
+  .bottom-bar {
+    padding: 4px;
+    gap: 4px;
+  }
+  .panel {
+    padding: 4px;
+  }
+  .section-title {
+    margin-bottom: 2px;
+  }
+  .btn.action {
+    width: 64px;
+    min-height: 70px;
+    font-size: 10px;
+  }
+  .btn.action img {
+    width: 26px;
+    height: 26px;
+  }
+  .portrait {
+    width: 44px;
+    height: 44px;
+  }
+  .portrait img {
+    width: 40px;
+    height: 40px;
+  }
+  .touch-bar .btn {
+    padding: 6px 9px;
+    font-size: 12px;
+  }
+  .players-panel {
+    font-size: 11px;
+    padding: 3px 6px;
+  }
+}

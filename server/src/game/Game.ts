@@ -117,6 +117,7 @@ export class Game {
     st.time += dt;
     st.tick++;
     for (const b of st.buildings) b.assistCount = 0;
+    MovementSystem.resetBudget();
     for (const ai of this.ais) ai.update(st, dt);
     UnitSystem.update(st, dt);
     MovementSystem.separate(st);

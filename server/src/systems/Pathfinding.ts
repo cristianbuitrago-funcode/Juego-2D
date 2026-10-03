@@ -11,9 +11,10 @@ export interface PathGoal {
   rect?: { x: number; y: number; w: number; h: number };
 }
 
-const MAX_NODES = 7000;
+const MAX_NODES = 4500;
 const SQRT2 = Math.SQRT2;
-const MAX_SPEED = 1.4;
+// Heurística ligeramente inflada (A* ponderado): rutas casi óptimas explorando muchas menos casillas.
+const MAX_SPEED = 0.9;
 
 class MinHeap {
   private items: number[] = [];
@@ -71,22 +72,41 @@ function goalDistance(goal: PathGoal, x: number, y: number): number {
  * El coste de cada paso depende de la velocidad del terreno (caminos rápidos, bosques/montañas lentos).
  * Si el objetivo es inalcanzable devuelve el camino hasta la casilla alcanzable más cercana.
  */
+// Búferes reutilizables (evitan crear Map/Set en cada búsqueda). `stamp` marca qué celdas son de la búsqueda actual.
+let bufSize = 0;
+let gScore = new Float32Array(0);
+let cameFrom = new Int32Array(0);
+let stamp = new Uint32Array(0);
+let closedStamp = new Uint32Array(0);
+let search = 0;
+
+function ensureBuffers(n: number) {
+  if (n <= bufSize) return;
+  bufSize = n;
+  gScore = new Float32Array(n);
+  cameFrom = new Int32Array(n);
+  stamp = new Uint32Array(n);
+  closedStamp = new Uint32Array(n);
+}
+
 export function findPath(map: GameMap, sx: number, sy: number, goal: PathGoal): Vec2[] {
   const W = map.width;
-  const start = Math.floor(sy) * W + Math.floor(sx);
   const startTx = Math.floor(sx);
   const startTy = Math.floor(sy);
   if (!map.inBounds(startTx, startTy)) return [];
+  const start = startTy * W + startTx;
 
   if (goalDistance(goal, sx, sy) <= goal.range) return [];
 
-  const g = new Map<number, number>();
-  const came = new Map<number, number>();
-  const closed = new Set<number>();
+  ensureBuffers(W * map.height);
+  search++;
+  const cur0 = search;
   const open = new MinHeap();
   const h = (tx: number, ty: number) => Math.max(0, goalDistance(goal, tx + 0.5, ty + 0.5) - goal.range) / MAX_SPEED;
 
-  g.set(start, 0);
+  gScore[start] = 0;
+  stamp[start] = cur0;
+  cameFrom[start] = -1;
   open.push(start, h(startTx, startTy));
   let bestNode = start;
   let bestH = h(startTx, startTy);
@@ -95,21 +115,21 @@ export function findPath(map: GameMap, sx: number, sy: number, goal: PathGoal): 
 
   while (open.size > 0 && expanded < MAX_NODES) {
     const cur = open.pop();
-    if (closed.has(cur)) continue;
-    closed.add(cur);
+    if (closedStamp[cur] === cur0) continue;
+    closedStamp[cur] = cur0;
     expanded++;
     const cx = cur % W;
     const cy = (cur - cx) / W;
-    const hc = h(cx, cy);
     if (goalDistance(goal, cx + 0.5, cy + 0.5) <= goal.range) {
       found = cur;
       break;
     }
+    const hc = h(cx, cy);
     if (hc < bestH) {
       bestH = hc;
       bestNode = cur;
     }
-    const gc = g.get(cur)!;
+    const gc = gScore[cur];
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
         if (dx === 0 && dy === 0) continue;
@@ -118,13 +138,13 @@ export function findPath(map: GameMap, sx: number, sy: number, goal: PathGoal): 
         if (!map.isWalkable(nx, ny)) continue;
         if (dx !== 0 && dy !== 0 && (!map.isWalkable(cx + dx, cy) || !map.isWalkable(cx, cy + dy))) continue;
         const ni = ny * W + nx;
-        if (closed.has(ni)) continue;
-        const speed = terrainDef(map.terrain(nx, ny)).speed;
-        const step = (dx !== 0 && dy !== 0 ? SQRT2 : 1) / speed;
-        const ng = gc + step;
-        if (ng < (g.get(ni) ?? Infinity)) {
-          g.set(ni, ng);
-          came.set(ni, cur);
+        if (closedStamp[ni] === cur0) continue;
+        const speed = terrainDef(map.tiles[ni]).speed;
+        const ng = gc + (dx !== 0 && dy !== 0 ? SQRT2 : 1) / speed;
+        if (stamp[ni] !== cur0 || ng < gScore[ni]) {
+          stamp[ni] = cur0;
+          gScore[ni] = ng;
+          cameFrom[ni] = cur;
           open.push(ni, ng + h(nx, ny));
         }
       }
@@ -134,7 +154,7 @@ export function findPath(map: GameMap, sx: number, sy: number, goal: PathGoal): 
   const end = found >= 0 ? found : bestNode;
   if (end === start) return [];
   const tiles: number[] = [];
-  for (let n: number | undefined = end; n !== undefined && n !== start; n = came.get(n)) tiles.push(n);
+  for (let n = end; n !== -1 && n !== start; n = cameFrom[n]) tiles.push(n);
   tiles.reverse();
   const pts = tiles.map((t) => ({ x: (t % W) + 0.5, y: Math.floor(t / W) + 0.5 }));
 
@@ -149,7 +169,10 @@ export function findPath(map: GameMap, sx: number, sy: number, goal: PathGoal): 
   return smoothPath(map, sx, sy, pts);
 }
 
-/** Elimina puntos intermedios innecesarios cuando hay línea recta transitable. */
+/**
+ * Elimina puntos intermedios innecesarios cuando hay línea recta transitable.
+ * Versión voraz hacia delante: O(n) comprobaciones de línea en vez de O(n²).
+ */
 function smoothPath(map: GameMap, sx: number, sy: number, pts: Vec2[]): Vec2[] {
   if (pts.length <= 2) return pts;
   const out: Vec2[] = [];
@@ -157,8 +180,9 @@ function smoothPath(map: GameMap, sx: number, sy: number, pts: Vec2[]): Vec2[] {
   let ay = sy;
   let i = 0;
   while (i < pts.length) {
-    let j = pts.length - 1;
-    while (j > i && !map.hasClearLine(ax, ay, pts[j].x, pts[j].y)) j--;
+    let j = i;
+    // Avanzar mientras haya línea directa (con un máximo para limitar el coste de cada comprobación).
+    while (j + 1 < pts.length && j - i < 24 && map.hasClearLine(ax, ay, pts[j + 1].x, pts[j + 1].y)) j++;
     out.push(pts[j]);
     ax = pts[j].x;
     ay = pts[j].y;

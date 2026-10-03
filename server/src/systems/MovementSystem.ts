@@ -6,6 +6,12 @@ import { findPath, type PathGoal } from './Pathfinding';
 
 export type MoveStatus = 'arrived' | 'moving' | 'unreachable';
 
+/** Límite de cálculos de ruta por tick (cantidad y tiempo): el resto espera al siguiente (evita picos de CPU). */
+const PATH_BUDGET_PER_TICK = 24;
+const PATH_TIME_BUDGET_MS = 8;
+let pathBudget = PATH_BUDGET_PER_TICK;
+let tickStart = 0;
+
 function goalDist(goal: PathGoal, x: number, y: number) {
   return goal.rect ? distToRect(x, y, goal.rect.x, goal.rect.y, goal.rect.w, goal.rect.h) : Math.hypot(x - goal.x, y - goal.y);
 }
@@ -14,6 +20,12 @@ function goalDist(goal: PathGoal, x: number, y: number) {
  * Movimiento autoritativo: el servidor calcula rutas y posiciones. El cliente solo interpola.
  */
 export const MovementSystem = {
+  /** Se llama al inicio de cada tick. */
+  resetBudget() {
+    pathBudget = PATH_BUDGET_PER_TICK;
+    tickStart = performance.now();
+  },
+
   /** Avanza la unidad hacia el objetivo. Recalcula la ruta cuando el objetivo cambia o se atasca. */
   moveTo(state: GameState, u: UnitEntity, goal: PathGoal, dt: number): MoveStatus {
     if (goalDist(goal, u.x, u.y) <= goal.range) {
@@ -23,12 +35,23 @@ export const MovementSystem = {
     u.repathTimer -= dt;
     const goalMoved = !u.pathGoal || Math.hypot(u.pathGoal.x - goal.x, u.pathGoal.y - goal.y) > 0.75;
     if ((goalMoved || u.path.length === 0) && u.repathTimer <= 0) {
+      if (pathBudget <= 0 || performance.now() - tickStart > PATH_TIME_BUDGET_MS) {
+        // Sin presupuesto este tick: seguir con la ruta anterior (si la hay) y reintentar enseguida.
+        u.repathTimer = 0;
+        if (u.path.length) this.step(state, u, dt);
+        return 'moving';
+      }
+      pathBudget--;
       u.path = findPath(state.map, u.x, u.y, goal);
       u.pathGoal = { x: goal.x, y: goal.y };
       u.repathTimer = 0.4;
       u.stuckTimer = 0;
       u.lastPos = { x: u.x, y: u.y };
-      if (u.path.length === 0) return goalDist(goal, u.x, u.y) <= goal.range + 0.6 ? 'arrived' : 'unreachable';
+      if (u.path.length === 0) {
+        // Destino inalcanzable desde aquí: esperar más antes de volver a intentarlo.
+        u.repathTimer = 1.5;
+        return goalDist(goal, u.x, u.y) <= goal.range + 0.6 ? 'arrived' : 'unreachable';
+      }
     }
     if (u.path.length === 0) return goalMoved ? 'moving' : 'unreachable';
     this.step(state, u, dt);

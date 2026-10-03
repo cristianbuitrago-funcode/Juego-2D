@@ -19,9 +19,9 @@ interface DifficultyProfile {
 }
 
 export const AI_PROFILES: Record<AIDifficulty, DifficultyProfile> = {
-  easy: { thinkInterval: 1.6, econMultiplier: 0.75, targetGatherers: 5, firstWave: 330, waveSize: 5, waveGrowth: 1 },
-  normal: { thinkInterval: 1.0, econMultiplier: 1.0, targetGatherers: 7, firstWave: 240, waveSize: 7, waveGrowth: 2 },
-  hard: { thinkInterval: 0.7, econMultiplier: 1.3, targetGatherers: 9, firstWave: 170, waveSize: 9, waveGrowth: 3 },
+  easy: { thinkInterval: 1.6, econMultiplier: 0.75, targetGatherers: 5, firstWave: 420, waveSize: 5, waveGrowth: 1 },
+  normal: { thinkInterval: 1.0, econMultiplier: 1.0, targetGatherers: 7, firstWave: 300, waveSize: 7, waveGrowth: 2 },
+  hard: { thinkInterval: 0.7, econMultiplier: 1.3, targetGatherers: 9, firstWave: 210, waveSize: 9, waveGrowth: 3 },
 };
 
 /** Orden de construcción básico de la IA. */

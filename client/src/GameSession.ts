@@ -57,7 +57,7 @@ export class GameSession {
       notify: (t, l) => toast(t, l),
       lastAlert: () => (this.alert && performance.now() - this.alert.at < 15000 ? this.alert : null),
     });
-    this.minimap = new Minimap(this.world, this.camera, window.innerWidth < 700 ? 120 : 180);
+    this.minimap = new Minimap(this.world, this.camera, Math.min(window.innerWidth, window.innerHeight) < 560 ? 112 : 180);
     this.minimap.onRightClick = (x, y) => this.input.issueAt(x, y, null, null);
     this.pause = new PauseMenu({
       onResume: () => this.pause.hide(),
